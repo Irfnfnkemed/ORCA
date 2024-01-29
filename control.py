@@ -2,17 +2,26 @@ import random
 
 from animation import Animation
 from calculate import *
+from robot import Robot
 
 
 class Control:
-    def __init__(self, time_interval, length, step=0.2, rate=0.5):
+    def __init__(self, ax_range=50, time_interval=0.1, length=1000, step=0.2, rate=0.5):
+        self.ax_range = ax_range
         self.time_interval = time_interval
         self.length = length
         self.step = step
         self.rate = rate
         self.robot_list = []
 
-    #def add_robot(self, radius, x_init, y_init, x_tar, y_tar, v_max):
+    def add_robot(self, radius, x_init, y_init, x_tar, y_tar, v_max):
+        self.robot_list.append(Robot(radius, x_init, y_init, x_tar, y_tar, v_max))
+
+    def check_radius(self, radius, pos_x, pos_y):
+        for robot in self.robot_list:
+            if (robot.pos_cur[0] - pos_x) ** 2 + (robot.pos_cur[1] - pos_y) ** 2 < (radius + robot.radius * 0.95) ** 2:
+                return False
+        return True
 
     def find_min_change_velocity(self, robot_cur, robot_abj):
         velocity = robot_cur.v_cur - robot_abj.v_cur  # relative velocity
@@ -132,8 +141,5 @@ class Control:
 
     def show(self):
         self.run()
-        Animation(self.robot_list).show()
-
-
-c = Control(0.1, 1000)
-c.show()
+        animation = Animation(self.robot_list, self.length, self.ax_range)
+        animation.show()
