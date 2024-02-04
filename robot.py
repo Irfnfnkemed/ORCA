@@ -4,7 +4,7 @@ from calculate import norm, Halfplane
 
 
 class Robot:
-    def __init__(self, radius, x_init, y_init, x_tar, y_tar, v_max):
+    def __init__(self, radius, x_init, y_init, x_tar, y_tar, v_max, time_interval):
         self.x_trace_list = None
         self.y_trace_list = None
         self.radius = radius / 0.95  # set radius bigger than the real radius, acting as buffer area
@@ -13,6 +13,7 @@ class Robot:
         self.v_max = v_max
         self.v_cur = self.pos_tar - self.pos_cur
         self.v_cur = self.v_cur / norm(self.v_cur) * v_max
+        self.time_interval = time_interval
         self.halfplane_list = []
         self.trace = []
         self.danger = 0
@@ -27,7 +28,7 @@ class Robot:
         self.trace.append(numpy.array(self.pos_cur))
 
     def update_pos(self):
-        self.pos_cur += self.v_cur * 0.1
+        self.pos_cur += self.v_cur * self.time_interval
 
     def set_trace_component(self):
         self.x_trace_list = [pos[0] for pos in self.trace]

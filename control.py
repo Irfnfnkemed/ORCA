@@ -14,8 +14,8 @@ class Control:
         self.rate = rate
         self.robot_list = []
 
-    def add_robot(self, radius, x_init, y_init, x_tar, y_tar, v_max):
-        self.robot_list.append(Robot(radius, x_init, y_init, x_tar, y_tar, v_max))
+    def add_robot(self, radius, x_init, y_init, x_tar, y_tar, v_max, time_interval):
+        self.robot_list.append(Robot(radius, x_init, y_init, x_tar, y_tar, v_max, time_interval))
 
     def check_radius(self, radius, pos_x, pos_y):
         for robot in self.robot_list:
@@ -46,13 +46,18 @@ class Control:
             else:  # clockwise side
                 return -numpy.array([tangent_vec_cw[1], -tangent_vec_cw[0]]) * cross(velocity, tangent_vec_cw), numpy.array([tangent_vec_cw[1], -tangent_vec_cw[0]])
 
-    def linear_program(self, halfplane_list, target_pos, v_max, danger):
+    def linear_program(self, halfplane_list, target_pos, v_max, danger, v_cur):
         length = norm(target_pos)
         if length < v_max * self.time_interval:
             target = target_pos / self.time_interval
         else:
             target = target_pos / length * v_max
         target += v_max * numpy.array([(random.random() - 0.5) / 40, (random.random() - 0.5) / 40])
+        if danger >= 3:
+            if numpy.sum(v_cur ** 2) < (0.1 * v_max) ** 2:
+                target = numpy.array([-target[1], target[0]])  # possible deadlock, attempting to leave the deadlock area
+            else:
+                target = v_cur * 0.2 + target * 0.8  # near multiple objects, conservative selection method
         optimal = target
         for i in range(len(halfplane_list)):
             if dot(optimal, halfplane_list[i].normal_vec) >= halfplane_list[i].constant:
@@ -61,7 +66,7 @@ class Control:
                 foot_drop = target + (halfplane_list[i].constant - dot(target, halfplane_list[i].normal_vec)) * halfplane_list[i].normal_vec
                 foot_drop_origin = halfplane_list[i].constant * halfplane_list[i].normal_vec
                 if numpy.sum(foot_drop_origin ** 2) > v_max ** 2:
-                    return self.linear_program_2(halfplane_list, v_max, danger)  # no solution
+                    return self.linear_program_2(halfplane_list, v_max, danger)  # no solution, yet has feasible area
                 line_vec_cw = numpy.array([halfplane_list[i].normal_vec[1], -halfplane_list[i].normal_vec[0]]) * math.sqrt(v_max ** 2 - numpy.sum(foot_drop_origin ** 2))
                 line_vec_ccw = -line_vec_cw
                 point_cw = foot_drop_origin + line_vec_ccw
@@ -85,7 +90,7 @@ class Control:
         return optimal
 
     def linear_program_2(self, halfplane_list, v_max, danger):
-        if danger >= 2:
+        if danger >= 2:  # no feasible area
             return v_max * numpy.array([(random.random() - 0.5) / 15, (random.random() - 0.5) / 15])
         optimal = numpy.array([0.0, 0.0])
         top_dis, decent_vec = find_top_plane(halfplane_list, optimal)
@@ -113,7 +118,7 @@ class Control:
         for i in range(len(self.robot_list)):
             for j in range(i):
                 dis_square = numpy.sum((self.robot_list[i].pos_cur - self.robot_list[j].pos_cur) ** 2)
-                if dis_square < (self.robot_list[i].radius + self.robot_list[j].radius) ** 2:
+                if dis_square < ((self.robot_list[i].radius + self.robot_list[j].radius) * 1.3) ** 2:
                     self.robot_list[i].danger += 1
                     self.robot_list[j].danger += 1
                 if dis_square < (self.robot_list[i].v_max * self.time_interval + self.robot_list[j].v_max * self.time_interval + self.robot_list[i].radius + self.robot_list[j].radius) ** 2:
@@ -127,12 +132,13 @@ class Control:
                 if norm(robot.v_cur) > robot.v_max:
                     robot.v_cur = robot.v_cur / norm(robot.v_cur) * robot.v_max
             else:
-                robot.v_cur = self.linear_program(robot.halfplane_list, robot.pos_tar - robot.pos_cur, robot.v_max, robot.danger)
+                robot.v_cur = self.linear_program(robot.halfplane_list, robot.pos_tar - robot.pos_cur, robot.v_max, robot.danger, robot.v_cur)
 
     def run(self):
-        for i in range(self.length):
-            for robot in self.robot_list:
-                robot.set_trace()
+        for i in range(self.length * 5):
+            if i % 5 == 0:
+                for robot in self.robot_list:
+                    robot.set_trace()
             self.find_new_velocity()
             for robot in self.robot_list:
                 robot.update_pos()

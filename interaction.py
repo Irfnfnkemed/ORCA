@@ -22,6 +22,7 @@ class Interaction:
         self.fig, self.ax = plt.subplots()
         self.control = Control(ax_range, time_interval, length, step, rate)
         self.robot_num = robot_num
+        self.time_interval = time_interval
         plt.gca().set_aspect('equal')
         self.ax.set_xlim(0, ax_range)
         self.ax.set_ylim(0, ax_range)
@@ -33,15 +34,19 @@ class Interaction:
         self.tar_y = 0.0
         self.v_max = 0.0
 
-    def run(self):
+    def set(self):
         self.fig.canvas.mpl_connect('button_press_event', self.on_click)
         plt.show()
+
+    def show(self):
+        print("Begin simulation. Please wait...")
+        self.control.show()
 
     def on_submit(self, text, text_box):
         if self.status == SET.V_MAX:
             self.v_max = float(text)
             text_box.destroy()
-            self.control.add_robot(self.radius, self.pos_x, self.pos_y, self.tar_x, self.tar_y, self.v_max)
+            self.control.add_robot(self.radius, self.pos_x, self.pos_y, self.tar_x, self.tar_y, self.v_max, self.time_interval)
             if len(self.control.robot_list) < self.robot_num:
                 self.status = SET.CENTRE
                 for text in self.ax.texts:
@@ -51,7 +56,6 @@ class Interaction:
             else:
                 self.status = SET.END
                 plt.close('all')
-                self.control.show()
 
     def on_click(self, event):
         if event.xdata is not None and event.ydata is not None:

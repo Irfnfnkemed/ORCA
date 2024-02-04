@@ -29,5 +29,5 @@ class Animation:
     def show(self):
         plt.close('all')
         self.fig, self.ax = plt.subplots()
-        self.ani = animation.FuncAnimation(self.fig, self.update, frames=self.frame_length, interval=1)
+        self.ani = animation.FuncAnimation(self.fig, self.update, frames=self.frame_length, interval=2)
         plt.show()
