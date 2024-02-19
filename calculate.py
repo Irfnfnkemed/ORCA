@@ -40,3 +40,7 @@ def dot(vec_lhs, vec_rhs):  # two-dimensional dot
 
 def norm(vec):  # two-dimensional, L2 norm
     return math.sqrt(vec[0] ** 2 + vec[1] ** 2)
+
+
+def normalization(vec):
+    return vec / norm(vec)

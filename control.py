@@ -46,52 +46,53 @@ class Control:
             else:  # clockwise side
                 return -numpy.array([tangent_vec_cw[1], -tangent_vec_cw[0]]) * cross(velocity, tangent_vec_cw), numpy.array([tangent_vec_cw[1], -tangent_vec_cw[0]])
 
-    def linear_program(self, halfplane_list, target_pos, v_max, danger, v_cur):
-        length = norm(target_pos)
-        if length < v_max * self.time_interval:
-            target = target_pos / self.time_interval
+    def linear_program(self, robot):
+        target_pos = robot.pos_tar - robot.pos_cur
+        if norm(robot.v_emergency) > robot.v_max / 20:
+            target = 0.4 * robot.v_emergency * robot.v_max + 0.6 * robot.v_cur
         else:
-            target = target_pos / length * v_max
-        target += v_max * numpy.array([(random.random() - 0.5) / 40, (random.random() - 0.5) / 40])
-        if danger >= 3:
-            if numpy.sum(v_cur ** 2) < (0.1 * v_max) ** 2:
+            length = norm(target_pos)
+            if length < robot.v_max * self.time_interval:
+                target = target_pos / self.time_interval
+            else:
+                target = target_pos / length * robot.v_max
+            if (robot.danger >= 3 and numpy.sum(robot.v_cur ** 2) < (0.1 * robot.v_max) ** 2 and robot.bigger < robot.danger * 0.8) or robot.lock >= 20:
                 target = numpy.array([-target[1], target[0]])  # possible deadlock, attempting to leave the deadlock area
             else:
-                target = v_cur * 0.2 + target * 0.8  # near multiple objects, conservative selection method
+                target = robot.v_cur * 0.8 + target * 0.2  # near multiple objects, conservative selection method
+        target += robot.v_max * numpy.array([(random.random() - 0.5) / 40, (random.random() - 0.5) / 40])
         optimal = target
-        for i in range(len(halfplane_list)):
-            if dot(optimal, halfplane_list[i].normal_vec) >= halfplane_list[i].constant:
+        for i in range(len(robot.halfplane_list)):
+            if dot(optimal, robot.halfplane_list[i].normal_vec) >= robot.halfplane_list[i].constant:
                 continue  # no new restrictions introduced
             else:
-                foot_drop = target + (halfplane_list[i].constant - dot(target, halfplane_list[i].normal_vec)) * halfplane_list[i].normal_vec
-                foot_drop_origin = halfplane_list[i].constant * halfplane_list[i].normal_vec
-                if numpy.sum(foot_drop_origin ** 2) > v_max ** 2:
-                    return self.linear_program_2(halfplane_list, v_max, danger)  # no solution, yet has feasible area
-                line_vec_cw = numpy.array([halfplane_list[i].normal_vec[1], -halfplane_list[i].normal_vec[0]]) * math.sqrt(v_max ** 2 - numpy.sum(foot_drop_origin ** 2))
+                foot_drop = target + (robot.halfplane_list[i].constant - dot(target, robot.halfplane_list[i].normal_vec)) * robot.halfplane_list[i].normal_vec
+                foot_drop_origin = robot.halfplane_list[i].constant * robot.halfplane_list[i].normal_vec
+                if numpy.sum(foot_drop_origin ** 2) > robot.v_max ** 2:
+                    return self.linear_program_2(robot.halfplane_list, robot.v_max, robot.danger)  # no solution, yet has feasible area
+                line_vec_cw = numpy.array([robot.halfplane_list[i].normal_vec[1], -robot.halfplane_list[i].normal_vec[0]]) * math.sqrt(robot.v_max ** 2 - numpy.sum(foot_drop_origin ** 2))
                 line_vec_ccw = -line_vec_cw
                 point_cw = foot_drop_origin + line_vec_ccw
                 point_ccw = foot_drop_origin + line_vec_cw
             for j in range(i):
-                tmp = find_cross_point(halfplane_list[i], halfplane_list[j])
-                if cross(halfplane_list[i].normal_vec, halfplane_list[j].normal_vec) < 0:  # clockwise
-                    if tmp is not None and cross(halfplane_list[i].normal_vec, tmp - point_cw) < 0:
+                tmp = find_cross_point(robot.halfplane_list[i], robot.halfplane_list[j])
+                if cross(robot.halfplane_list[i].normal_vec, robot.halfplane_list[j].normal_vec) < 0:  # clockwise
+                    if tmp is not None and cross(robot.halfplane_list[i].normal_vec, tmp - point_cw) < 0:
                         point_cw = tmp
                 else:
-                    if tmp is not None and cross(halfplane_list[i].normal_vec, tmp - point_ccw) > 0:
+                    if tmp is not None and cross(robot.halfplane_list[i].normal_vec, tmp - point_ccw) > 0:
                         point_ccw = tmp
-            if cross(halfplane_list[i].normal_vec, point_ccw - point_cw) > 0:  # no solution
-                return self.linear_program_2(halfplane_list, v_max, danger)
-            elif cross(halfplane_list[i].normal_vec, foot_drop - point_ccw) < 0:
+            if cross(robot.halfplane_list[i].normal_vec, point_ccw - point_cw) > 0:  # no solution
+                return self.linear_program_2(robot.halfplane_list, robot.v_max, robot.danger)
+            elif cross(robot.halfplane_list[i].normal_vec, foot_drop - point_ccw) < 0:
                 optimal = point_ccw
-            elif cross(halfplane_list[i].normal_vec, foot_drop - point_cw) > 0:
+            elif cross(robot.halfplane_list[i].normal_vec, foot_drop - point_cw) > 0:
                 optimal = point_cw
             else:
                 optimal = foot_drop
         return optimal
 
     def linear_program_2(self, halfplane_list, v_max, danger):
-        if danger >= 2:  # no feasible area
-            return v_max * numpy.array([(random.random() - 0.5) / 15, (random.random() - 0.5) / 15])
         optimal = numpy.array([0.0, 0.0])
         top_dis, decent_vec = find_top_plane(halfplane_list, optimal)
         stop = False
@@ -115,24 +116,40 @@ class Control:
         for robot in self.robot_list:
             robot.clear_halfplane()
             robot.danger = 0
+            robot.v_emergency = numpy.array([0.0, 0.0])
+            if numpy.sum(robot.v_cur ** 2) < (0.2 * robot.v_max) ** 2:
+                robot.lock += 1
+            else:
+                robot.lock = 0
         for i in range(len(self.robot_list)):
             for j in range(i):
                 dis_square = numpy.sum((self.robot_list[i].pos_cur - self.robot_list[j].pos_cur) ** 2)
-                if dis_square < ((self.robot_list[i].radius + self.robot_list[j].radius) * 1.3) ** 2:
+                min_square = (self.robot_list[i].radius + self.robot_list[j].radius) ** 2
+                if dis_square < 1.7 * min_square:
                     self.robot_list[i].danger += 1
                     self.robot_list[j].danger += 1
+                    if self.robot_list[i].radius > 2 * self.robot_list[j].radius:
+                        self.robot_list[i].bigger += 1
+                    if self.robot_list[j].radius > 2 * self.robot_list[i].radius:
+                        self.robot_list[j].bigger += 1
+                if dis_square <= min_square and \
+                        numpy.sum((self.robot_list[i].pos_cur - self.robot_list[i].pos_tar) ** 2) > (0.1 * self.robot_list[i].radius) ** 2 and \
+                        numpy.sum((self.robot_list[j].pos_cur - self.robot_list[j].pos_tar) ** 2) > (0.1 * self.robot_list[j].radius) ** 2:
+                    self.robot_list[i].v_emergency = normalization(normalization(self.robot_list[i].pos_cur - self.robot_list[j].pos_cur) + self.robot_list[i].v_emergency)
+                    self.robot_list[j].v_emergency = normalization(normalization(self.robot_list[j].pos_cur - self.robot_list[i].pos_cur) + self.robot_list[j].v_emergency)
                 if dis_square < (self.robot_list[i].v_max * self.time_interval + self.robot_list[j].v_max * self.time_interval + self.robot_list[i].radius + self.robot_list[j].radius) ** 2:
                     random_float = (random.random() - 0.5) / 5
                     u, vec = self.find_min_change_velocity(self.robot_list[i], self.robot_list[j])  # only need to consider the robot which is possible to collide
-                    self.robot_list[i].set_halfplane(vec, self.robot_list[i].v_cur + (0.5 + random_float) * u)
-                    self.robot_list[j].set_halfplane(-vec, self.robot_list[j].v_cur - (0.5 - random_float) * u)
+                    self.robot_list[i].set_halfplane(vec, self.robot_list[i].v_cur + (self.robot_list[j].radius / (self.robot_list[i].radius + self.robot_list[j].radius) + random_float) * u)
+                    self.robot_list[j].set_halfplane(-vec, self.robot_list[j].v_cur - (self.robot_list[i].radius / (self.robot_list[i].radius + self.robot_list[j].radius) - random_float) * u)
         for robot in self.robot_list:
             if len(robot.halfplane_list) == 0:
-                robot.v_cur = (robot.pos_tar - robot.pos_cur) / self.time_interval
-                if norm(robot.v_cur) > robot.v_max:
-                    robot.v_cur = robot.v_cur / norm(robot.v_cur) * robot.v_max
+                if numpy.sum((robot.pos_tar - robot.pos_cur) ** 2) > (robot.v_max * self.time_interval) ** 2:
+                    robot.v_cur = 0.2 * robot.v_max * normalization(robot.pos_tar - robot.pos_cur) + 0.8 * robot.v_cur
+                else:
+                    robot.v_cur = (robot.pos_tar - robot.pos_cur) / self.time_interval
             else:
-                robot.v_cur = self.linear_program(robot.halfplane_list, robot.pos_tar - robot.pos_cur, robot.v_max, robot.danger, robot.v_cur)
+                robot.v_cur = self.linear_program(robot)
 
     def run(self):
         for i in range(self.length * 5):

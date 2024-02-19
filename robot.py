@@ -17,6 +17,9 @@ class Robot:
         self.halfplane_list = []
         self.trace = []
         self.danger = 0
+        self.v_emergency = None
+        self.lock = 0
+        self.bigger = 0
 
     def clear_halfplane(self):
         self.halfplane_list.clear()
